@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>D3VIL — S. Hadi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #09090b;
+    --bg2: #111113;
+    --bg3: #161618;
+    --fg: #e8e8e4;
+    --fg-dim: #888884;
+    --green: #00ff41;
+    --green-dim: #00cc33;
+    --green-dark: #002b00;
+    --green-glow: rgba(0,255,65,0.15);
+    --border: rgba(0,255,65,0.12);
+    --font-mono: 'Space Mono', monospace;
+    --font-display: 'Syne', sans-serif;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-mono);
+    overflow-x: hidden;
+    cursor: default;
+  }
+
+  /* ── SCANLINE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9998;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+  }
+
+  /* ── GLITCH INTRO SCREEN ── */
+  #glitch-intro {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+    overflow: hidden;
+  }
+
+  #glitch-intro.fade-out {
+    animation: introFade 0.6s ease forwards;
+  }
+
+  @keyframes introFade {
+    0%   { opacity: 1; }
+    100% { opacity: 0; pointer-events: none; }
+  }
+
+  .intro-text {
+    font-family: var(--font-mono);
+    font-size: clamp(14px, 3vw, 22px);
+    color: var(--green);
+    text-shadow: 0 0 20px var(--green), 0 0 40px var(--green);
+    letter-spacing: 0.25em;
+    text-align: center;
+    padding: 0 20px;
+  }
+
+  .glitch-bar {
+    width: 280px;
+    height: 2px;
+    background: var(--green-dark);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .glitch-bar-fill {
+    height: 100%;
+    background: var(--green);
+    box-shadow: 0 0 12px var(--green);
+    animation: barFill 2.2s ease forwards;
+    width: 0;
+  }
+
+  @keyframes barFill {
+    0%   { width: 0%; }
+    80%  { width: 95%; }
+    100% { width: 100%; }
+  }
+
+  .scanline-intro {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 1px,
+      rgba(0,255,65,0.03) 1px, rgba(0,255,65,0.03) 2px
+    );
+    animation: scanMove 0.08s linear infinite;
+    pointer-events: none;
+  }
+
+  @keyframes scanMove {
+    from { background-position: 0 0; }
+    to   { background-position: 0 4px; }
+  }
+
+  .glitch-noise {
+    position: absolute;
+    inset: 0;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation: noiseShift 0.1s steps(2) infinite;
+    pointer-events: none;
+  }
+
+  @keyframes noiseShift {
+    0%   { transform: translate(0,0); }
+    25%  { transform: translate(-2px, 1px); }
+    50%  { transform: translate(2px, -1px); }
+    75%  { transform: translate(-1px, 2px); }
+    100% { transform: translate(1px, -2px); }
+  }
+
+  /* ── MAIN LAYOUT ── */
+  #app { opacity: 0; transition: opacity 0.8s ease; }
+  #app.visible { opacity: 1; }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(9,9,11,0.95) 0%, transparent 100%);
+    backdrop-filter: blur(8px);
+  }
+
+  .nav-logo {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 22px;
+    color: var(--green);
+    text-shadow: 0 0 20px var(--green);
+    letter-spacing: 0.05em;
+    text-decoration: none;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-dim);
+    text-decoration: none;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: color 0.2s, text-shadow 0.2s;
+  }
+
+  .nav-links a:hover {
+    color: var(--green);
+    text-shadow: 0 0 12px var(--green);
+  }
+
+  .nav-resume {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--green);
+    border: 1px solid var(--green);
+    padding: 8px 16px;
+    text-decoration: none;
+    transition: background 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    background: transparent;
+  }
+
+  .nav-resume:hover {
+    background: var(--green-glow);
+    box-shadow: 0 0 20px var(--green-glow);
+  }
+
+  /* ── HERO ── */
+  #hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 120px 40px 80px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,65,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,65,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+  }
+
+  .hero-bg-glow {
+    position: absolute;
+    top: -20%;
+    left: -10%;
+    width: 60%;
+    height: 70%;
+    background: radial-gradient(ellipse, rgba(0,255,65,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    position: relative;
+    max-width: 1100px;
+  }
+
+  .hero-tag {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--green);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    opacity: 0.8;
+  }
+
+  .hero-tag::before { content: '> '; }
+
+  .hero-name {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(64px, 10vw, 140px);
+    line-height: 0.9;
+    color: var(--fg);
+    letter-spacing: -0.03em;
+    margin-bottom: 8px;
+    text-wrap: balance;
+  }
+
+  .hero-name .accent { color: var(--green); text-shadow: 0 0 40px var(--green), 0 0 80px rgba(0,255,65,0.3); }
+
+  .hero-alias {
+    font-family: var(--font-mono);
+    font-size: clamp(14px, 2vw, 18px);
+    color: var(--fg-dim);
+    margin-bottom: 40px;
+    letter-spacing: 0.08em;
+  }
+
+  .hero-alias .handle {
+    color: var(--green);
+    font-weight: 700;
+  }
+
+  .hero-tagline {
+    font-family: var(--font-mono);
+    font-size: clamp(16px, 2.2vw, 22px);
+    color: var(--fg);
+    margin-bottom: 48px;
+    line-height: 1.5;
+    max-width: 600px;
+    border-left: 2px solid var(--green);
+    padding-left: 20px;
+  }
+
+  .hero-ctas {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .btn-primary {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--bg);
+    background: var(--green);
+    border: none;
+    padding: 14px 28px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: box-shadow 0.2s, transform 0.1s;
+    display: inline-block;
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 0 30px var(--green), 0 0 60px rgba(0,255,65,0.3);
+    transform: translateY(-1px);
+  }
+
+  .btn-ghost {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--green);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 14px 28px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: border-color 0.2s, background 0.2s;
+    display: inline-block;
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--green);
+    background: var(--green-glow);
+  }
+
+  .hero-scroll {
+    position: absolute;
+    bottom: 40px;
+    left: 40px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    opacity: 0.5;
+  }
+
+  .hero-scroll::after {
+    content: '';
+    width: 40px;
+    height: 1px;
+    background: var(--fg-dim);
+    animation: scrollPulse 2s ease infinite;
+  }
+
+  @keyframes scrollPulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
+  /* ── SECTION BASE ── */
+  section {
+    padding: 100px 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 12px;
+    opacity: 0.7;
+  }
+
+  .section-label::before { content: '// '; }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(32px, 5vw, 56px);
+    color: var(--fg);
+    line-height: 1;
+    margin-bottom: 60px;
+    letter-spacing: -0.02em;
+  }
+
+  /* ── ABOUT ── */
+  #about .about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 60px;
+    align-items: start;
+  }
+
+  .about-text p {
+    font-size: 15px;
+    line-height: 1.9;
+    color: var(--fg-dim);
+    margin-bottom: 20px;
+  }
+
+  .about-text p strong { color: var(--fg); }
+
+  .about-text p .green { color: var(--green); }
+
+  .about-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+  }
+
+  .stat-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 24px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .stat-box:hover {
+    border-color: var(--green);
+    background: var(--bg3);
+  }
+
+  .stat-number {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 42px;
+    color: var(--green);
+    text-shadow: 0 0 20px rgba(0,255,65,0.4);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+  }
+
+  /* ── PROJECTS ── */
+  #projects { max-width: 1200px; }
+
+  .projects-grid {
+    columns: 3;
+    column-gap: 16px;
+  }
+
+  @media (max-width: 900px) { .projects-grid { columns: 2; } }
+  @media (max-width: 600px) { .projects-grid { columns: 1; } }
+
+  .project-card {
+    break-inside: avoid;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 28px;
+    margin-bottom: 16px;
+    cursor: pointer;
+    transition: border-color 0.25s, transform 0.2s, box-shadow 0.25s;
+    position: relative;
+    overflow: hidden;
+    display: block;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .project-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--green);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s ease;
+  }
+
+  .project-card:hover {
+    border-color: rgba(0,255,65,0.3);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 20px rgba(0,255,65,0.05);
+  }
+
+  .project-card:hover::before { transform: scaleX(1); }
+
+  .project-tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 12px;
+    opacity: 0.7;
+  }
+
+  .project-name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--fg);
+    margin-bottom: 10px;
+    line-height: 1.2;
+  }
+
+  .project-desc {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--fg-dim);
+    margin-bottom: 20px;
+  }
+
+  .project-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .project-lang {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .project-lang::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+  }
+
+  .project-links {
+    display: flex;
+    gap: 10px;
+  }
+
+  .project-link {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    text-decoration: none;
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 4px 8px;
+    transition: color 0.2s, border-color 0.2s;
+  }
+
+  .project-link:hover {
+    color: var(--green);
+    border-color: var(--green);
+  }
+
+  .project-card.featured {
+    background: linear-gradient(135deg, var(--bg2) 0%, rgba(0,43,0,0.3) 100%);
+  }
+
+  /* ── SKILLS ── */
+  #skills { background: var(--bg); }
+
+  .terminal-window {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    max-width: 800px;
+  }
+
+  .terminal-header {
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .term-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .term-dot.r { background: #ff5f56; }
+  .term-dot.y { background: #ffbd2e; }
+  .term-dot.g { background: #27c93f; }
+
+  .term-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-dim);
+    margin-left: 8px;
+    letter-spacing: 0.05em;
+  }
+
+  .terminal-body {
+    padding: 24px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 2;
+    min-height: 320px;
+  }
+
+  .term-line { display: flex; gap: 12px; flex-wrap: wrap; }
+  .term-prompt { color: var(--green); white-space: nowrap; }
+  .term-cmd { color: var(--fg); word-break: break-word; }
+  .term-output { color: var(--fg-dim); padding-left: 20px; white-space: pre-wrap; word-break: break-word; }
+  .term-green { color: var(--green); }
+  .term-error { color: #ff5f56; }
+
+  .term-input-line { display: flex; gap: 12px; align-items: center; }
+  .term-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--fg);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    caret-color: var(--green);
+    padding: 0;
+  }
+  .terminal-body { cursor: text; }
+  .term-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 14px;
+    background: var(--green);
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .skill-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 40px;
+  }
+
+  .skill-tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--fg-dim);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
+    cursor: default;
+  }
+
+  .skill-tag:hover {
+    color: var(--green);
+    border-color: var(--green);
+    box-shadow: 0 0 12px rgba(0,255,65,0.1);
+  }
+
+  /* ── CONTACT ── */
+  #contact {
+    border-top: 1px solid var(--border);
+    padding: 100px 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .contact-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: start;
+  }
+
+  .contact-intro {
+    font-size: 14px;
+    line-height: 1.9;
+    color: var(--fg-dim);
+    margin-bottom: 32px;
+  }
+
+  .contact-links {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .contact-link {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-decoration: none;
+    color: var(--fg-dim);
+    font-size: 13px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    transition: color 0.2s;
+  }
+
+  .contact-link:hover { color: var(--green); }
+
+  .contact-link-icon {
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+  }
+
+  .contact-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .form-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+  }
+
+  .form-input, .form-textarea {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 12px 16px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    resize: none;
+    width: 100%;
+  }
+
+  .form-input:focus, .form-textarea:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 0 2px rgba(0,255,65,0.06);
+  }
+
+  .form-textarea { min-height: 100px; }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-dim);
+    letter-spacing: 0.05em;
+  }
+
+  footer .green { color: var(--green); }
+
+  /* ── PRINT / RESUME ── */
+  @media print {
+    #glitch-intro, nav, #hero .hero-bg-grid, #hero .hero-bg-glow,
+    .hero-scroll, body::before, .skill-tags { display: none !important; }
+
+    body { background: white; color: black; font-size: 11px; }
+
+    #app { opacity: 1 !important; }
+
+    section { padding: 30px 20px; page-break-inside: avoid; }
+
+    .project-card { border: 1px solid #ddd; page-break-inside: avoid; }
+
+    .hero-name { font-size: 48px; color: black; }
+    .hero-name .accent { color: #1a7a1a; text-shadow: none; }
+
+    .section-title { font-size: 28px; color: black; }
+
+    :root {
+      --fg: #111;
+      --fg-dim: #555;
+      --green: #1a7a1a;
+      --bg: white;
+      --bg2: #f5f5f5;
+      --border: #ddd;
+    }
+  }
+
+  /* ── GLITCH ANIMATION ON NAME ── */
+  @keyframes glitchName {
+    0%   { clip-path: inset(0 0 100% 0); transform: translate(0); }
+    5%   { clip-path: inset(20% 0 60% 0); transform: translate(-3px, 0); color: var(--green); }
+    10%  { clip-path: inset(60% 0 20% 0); transform: translate(3px, 0); }
+    15%  { clip-path: inset(0 0 0 0);     transform: translate(0); color: var(--fg); }
+    100% { clip-path: inset(0 0 0 0);     transform: translate(0); }
+  }
+
+  .glitch-name-anim {
+    animation: glitchName 0.4s steps(2) forwards;
+  }
+
+  @media (max-width: 768px) {
+    nav { padding: 16px 20px; }
+    .nav-links { display: none; }
+    section, #contact { padding: 60px 20px; }
+    #hero { padding: 100px 20px 60px; }
+    #about .about-grid { grid-template-columns: 1fr; gap: 40px; }
+    .contact-grid { grid-template-columns: 1fr; gap: 40px; }
+    footer { flex-direction: column; gap: 12px; text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<!-- GLITCH INTRO -->
+<div id="glitch-intro">
+  <div class="glitch-noise"></div>
+  <div class="scanline-intro"></div>
+  <div class="intro-text" id="intro-text">INITIALIZING...</div>
+  <div class="glitch-bar"><div class="glitch-bar-fill" id="bar-fill"></div></div>
+</div>
+
+<div id="app">
+
+  <!-- NAV -->
+  <nav>
+    <a href="#hero" class="nav-logo">D3VIL</a>
+    <ul class="nav-links">
+      <li><a href="#about">About</a></li>
+      <li><a href="#projects">Projects</a></li>
+      <li><a href="#skills">Skills</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+    <button class="nav-resume" onclick="window.print()">$ resume.pdf</button>
+  </nav>
+
+  <!-- HERO -->
+  <section id="hero">
+    <div class="hero-bg-grid"></div>
+    <div class="hero-bg-glow"></div>
+    <div class="hero-inner">
+      <div class="hero-tag">Jammu &amp; Kashmir</div>
+      <h1 class="hero-name" id="hero-name">
+        S. <span class="accent">Hadi</span>
+      </h1>
+      <div class="hero-alias">
+        aka <span class="handle">D3VIL</span> — Python &amp; Full-Stack Developer
+      </div>
+      <p class="hero-tagline">
+        8 out of 10 faceiq certified&nbsp;;)
+      </p>
+      <div class="hero-ctas">
+        <a href="#projects" class="btn-primary">View Projects</a>
+        <a href="https://github.com/S-leonardo369" class="btn-ghost" target="_blank">GitHub ↗</a>
+      </div>
+    </div>
+    <div class="hero-scroll">Scroll</div>
+  </section>
+
+  <!-- ABOUT -->
+  <section id="about">
+    <div class="section-label">About</div>
+    <h2 class="section-title">Who am I?</h2>
+    <div class="about-grid">
+      <div class="about-text">
+        <p>
+          I'm <strong>S. Hadi</strong> — a <span class="green">Python &amp; full-stack developer</span> from Jammu &amp; Kashmir. Class 11 student, the go-to nerd who sometimes talks to people too.
+        </p>
+        <p>
+          Started coding at 12 with JS on Khan Academy. Dropped it, came back after watching <strong>Snowden</strong> — and the motivation never left. Went from Python → JS → vibe coding. Big supporter of <span class="green">vibe coding</span> and freedom of speech.
+        </p>
+        <p>
+          Open-source first. Always building. <span class="green">Currently exploring</span> automation, bots, and weird interfaces.
+        </p>
+      </div>
+      <div class="about-stats">
+        <div class="stat-box">
+          <div class="stat-number">8+</div>
+          <div class="stat-label">Projects shipped</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number">17</div>
+          <div class="stat-label">Repos on GitHub</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number">J&amp;K</div>
+          <div class="stat-label">Home base</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number">OSS</div>
+          <div class="stat-label">Open source first</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROJECTS -->
+  <section id="projects">
+    <div class="section-label">Projects</div>
+    <h2 class="section-title">Things I've built</h2>
+    <div class="projects-grid">
+
+      <div class="project-card featured" onclick="window.open('https://math1o1.pages.dev/','_blank')" role="link" tabindex="0">
+        <div class="project-tag">TypeScript · Live</div>
+        <div class="project-name">math1o1</div>
+        <div class="project-desc">
+          Class 11 CBSE maths explained like a friend would. Conversational notes with LaTeX rendering, interactive concept graph, zero textbook jargon. Built with Quartz + Obsidian.
+        </div>
+        <div class="project-footer">
+          <div class="project-lang">TypeScript</div>
+          <div class="project-links">
+            <a href="https://math1o1.pages.dev/" class="project-link" target="_blank" onclick="event.stopPropagation()">Live ↗</a>
+            <a href="https://github.com/S-leonardo369/math1o1" class="project-link" target="_blank" onclick="event.stopPropagation()">GitHub</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-card" onclick="window.open('https://handtalk.up.railway.app/','_blank')" role="link" tabindex="0">
+        <div class="project-tag">JavaScript · Live</div>
+        <div class="project-name">handTalk</div>
+        <div class="project-desc">
+          Real-time hand gesture recognition app — speak with your hands, not your keyboard. Deployed on Railway.
+        </div>
+        <div class="project-footer">
+          <div class="project-lang">JavaScript</div>
+          <div class="project-links">
+            <a href="https://handtalk.up.railway.app/" class="project-link" target="_blank" onclick="event.stopPropagation()">Live ↗</a>
+            <a href="https://github.com/S-leonardo369/handTalk" class="project-link" target="_blank" onclick="event.stopPropagation()">GitHub</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-card" onclick="window.open('https://github.com/S-leonardo369/voting-blockchain-system','_blank')" role="link" tabindex="0">
+        <div class="project-tag">Python · Blockchain</div>
+        <div class="project-name">Voting Blockchain</div>
+        <div class="project-desc">
+          Tamper-proof decentralised voting system built on a custom blockchain. Cryptographic vote integrity without a third party.
+        </div>
+        <div class="project-footer">
+          <div class="project-lang">Python</div>
+          <div class="project-links">
+            <a href="https://github.com/S-leonardo369/voting-blockchain-system" class="project-link" target="_blank" onclick="event.stopPropagation()">GitHub</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-card" onclick="window.open('https://github.com/S-leonardo369/sideRott','_blank')" role="link" tabindex="0">
+        <div class="project-tag">JavaScript · Desktop</div>
+        <div class="project-name">sideRott</div>
+        <div class="project-desc">
+          Always-on Windows desktop app that snaps a perfectly-sized "brainrot" video panel to the right side of your screen on demand.
+        </div>
+        <div class="project-footer">
+          <div class="project-lang">JavaScript</div>
+          <div class="project-links">
+            <a href="https://github.com/S-leonardo369/sideRott" class="project-link" target="_blank" onclick="event.stopPropagation()">GitHub</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-card" onclick="window.open('https://github.com/S-leonardo369/gymBott','_blank')" role="link" tabindex="0">
+        <div class="project-tag">TypeScript · Telegram Bot</div>
+        <div class="project-name">gymBott</div>
+        <div class="project-desc">
+          Gym membership management Telegram bot. Add/renew members via commands or buttons. Auto-notifies owners and members on expiry. Replaces the spreadsheet.
+        </div>
+        <div class="project-footer">
+          <div class="project-lang">TypeScript</div>
+          <div class="project-links">
+            <a href="https://github.com/S-leonardo369/gymBott" class="project-link" target="_blank" onclick="event.stopPropagation()">GitHub</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-card" onclick="window.open('https://github.com/S-leonardo369/Wall_Of_Words','_blank')" role="link" tabindex="0">
+        <div class="project-tag">JavaScript · Desktop</div>
+        <div class="project-name">Wall of Words</div>
+        <div class="project-desc">
+          Desktop app that improves vocabulary by updating your system wallpaper with new words, meanings, and examples on a schedule. Learning passively.
+        </div>
+        <div class="project-footer">
+          <div class="project-lang">JavaScript</div>
+          <div class="project-links">
+            <a href="https://github.com/S-leonardo369/Wall_Of_Words" class="project-link" target="_blank" onclick="event.stopPropagation()">GitHub</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-card" onclick="window.open('https://github.com/S-leonardo369/404-Error','_blank')" role="link" tabindex="0">
+        <div class="project-tag">Web · Creative</div>
+        <div class="project-name">404-Error</div>
+        <div class="project-desc">
+          A 404 page that doesn't feel like a dead end. Because error pages should have personality.
+        </div>
+        <div class="project-footer">
+          <div class="project-lang">JavaScript</div>
+          <div class="project-links">
+            <a href="https://github.com/S-leonardo369/404-Error" class="project-link" target="_blank" onclick="event.stopPropagation()">GitHub</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-card" onclick="window.open('https://github.com/S-leonardo369/onStart','_blank')" role="link" tabindex="0">
+        <div class="project-tag">JavaScript · Utility</div>
+        <div class="project-name">onStart</div>
+        <div class="project-desc">
+          Startup launcher utility that runs scripts and opens apps on system boot. Automate your morning setup.
+        </div>
+        <div class="project-footer">
+          <div class="project-lang">JavaScript</div>
+          <div class="project-links">
+            <a href="https://github.com/S-leonardo369/onStart" class="project-link" target="_blank" onclick="event.stopPropagation()">GitHub</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SKILLS -->
+  <section id="skills">
+    <div class="section-label">Stack</div>
+    <h2 class="section-title">Skills</h2>
+
+    <div class="terminal-window">
+      <div class="terminal-header">
+        <div class="term-dot r"></div>
+        <div class="term-dot y"></div>
+        <div class="term-dot g"></div>
+        <span class="term-title">d3vil@jk:~$ skills --list</span>
+      </div>
+      <div class="terminal-body" id="terminal-body"></div>
+    </div>
+
+    <div class="skill-tags" id="skill-tags"></div>
+  </section>
+
+  <!-- CONTACT -->
+  <section id="contact">
+    <div class="section-label">Contact</div>
+    <h2 class="section-title">Let's talk</h2>
+    <div class="contact-grid">
+      <div>
+        <p class="contact-intro">
+          Whether you've got a weird project idea, want to collaborate on something open-source, or just want to say hi — my inbox is open.
+        </p>
+        <div class="contact-links">
+          <a href="https://github.com/S-leonardo369" class="contact-link" target="_blank">
+            <span class="contact-link-icon">⌥</span>
+            github.com/S-leonardo369
+          </a>
+          <a href="mailto:d3vil@example.com" class="contact-link">
+            <span class="contact-link-icon">@</span>
+            Email me
+          </a>
+          <a href="https://math1o1.pages.dev/" class="contact-link" target="_blank">
+            <span class="contact-link-icon">◈</span>
+            math1o1.pages.dev
+          </a>
+        </div>
+      </div>
+      <form class="contact-form" onsubmit="handleSubmit(event)">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input type="text" class="form-input" placeholder="Your name" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-input" placeholder="you@example.com" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Message</label>
+          <textarea class="form-textarea" placeholder="What's on your mind?" required></textarea>
+        </div>
+        <button type="submit" class="btn-primary" style="align-self:flex-start;">$ send_message</button>
+      </form>
+    </div>
+  </section>
+
+  <footer>
+    <span>Built by <span class="green">D3VIL</span> · S. Hadi · J&amp;K</span>
+    <span>© 2026 — <span class="green">open source ♥</span></span>
+  </footer>
+
+</div><!-- /#app -->
+
+<script>
+// ── GLITCH INTRO ──
+const introMessages = [
+  'INITIALIZING...',
+  'LOADING MODULES...',
+  'COMPILING PORTFOLIO...',
+  'DECRYPTING PROJECTS...',
+  'ACCESS GRANTED.',
+];
+
+let msgIdx = 0;
+const introText = document.getElementById('intro-text');
+
+function cycleMessage() {
+  if (msgIdx < introMessages.length) {
+    introText.textContent = introMessages[msgIdx++];
+    if (msgIdx < introMessages.length) {
+      setTimeout(cycleMessage, 400);
+    }
+  }
+}
+
+cycleMessage();
+
+setTimeout(() => {
+  const intro = document.getElementById('glitch-intro');
+  const app   = document.getElementById('app');
+  intro.classList.add('fade-out');
+  app.classList.add('visible');
+  setTimeout(() => {
+    intro.style.display = 'none';
+    startTerminal();
+  }, 700);
+}, 2600);
+
+// ── TERMINAL TYPEWRITER ──
+const termLines = [
+  { type: 'cmd', prompt: 'd3vil@jk:~$', text: 'skills --languages' },
+  { type: 'out', text: '→  Python  |  JavaScript  |  TypeScript  |  HTML/CSS' },
+  { type: 'cmd', prompt: 'd3vil@jk:~$', text: 'skills --backend' },
+  { type: 'out', text: '→  Node.js  |  Express  |  Railway  |  Telegram Bot API' },
+  { type: 'cmd', prompt: 'd3vil@jk:~$', text: 'skills --tools' },
+  { type: 'out', text: '→  Git  |  Electron  |  Quartz  |  Cloudflare Pages' },
+  { type: 'cmd', prompt: 'd3vil@jk:~$', text: 'skills --misc' },
+  { type: 'out', text: '→  Blockchain (custom)  |  LaTeX  |  Linux  |  Automation' },
+  { type: 'cursor', prompt: 'd3vil@jk:~$', text: '' },
+];
+
+const allSkills = [
+  'Python','JavaScript','TypeScript','Node.js','Express',
+  'Electron','Telegram Bot API','Quartz','Obsidian',
+  'Blockchain','LaTeX','Linux','Git','Cloudflare Pages',
+  'Railway','HTML','CSS','Automation','REST APIs',
+];
+
+const PROMPT = 'd3vil@jk:~$';
+
+const COMMANDS = {
+  help: () => [
+    'Available commands:',
+    '  help              show this message',
+    '  skills [--list|--languages|--backend|--tools|--misc]',
+    '  about             who am I',
+    '  projects          list shipped projects',
+    '  contact           how to reach me',
+    '  whoami            quick identity',
+    '  socials           where to find me online',
+    '  date              current date/time',
+    '  echo <text>       print text',
+    '  clear             clear terminal',
+    '  sudo <anything>   nice try',
+  ].join('\n'),
+  whoami: () => 's.hadi (aka D3VIL) — class 11, Jammu & Kashmir',
+  about: () => [
+    'S. Hadi — Python & full-stack dev from J&K.',
+    'Started @ 12 with JS on Khan Academy. Came back after Snowden.',
+    'Open-source first. Vibe coding believer.',
+  ].join('\n'),
+  projects: () => [
+    '→  math1o1            https://math1o1.pages.dev',
+    '→  handTalk           https://handtalk.up.railway.app',
+    '→  voting-blockchain  github.com/S-leonardo369/voting-blockchain-system',
+    '→  sideRott           github.com/S-leonardo369/sideRott',
+    '→  gymBott            github.com/S-leonardo369/gymBott',
+    '→  Wall_Of_Words      github.com/S-leonardo369/Wall_Of_Words',
+    '→  404-Error          github.com/S-leonardo369/404-Error',
+    '→  onStart            github.com/S-leonardo369/onStart',
+  ].join('\n'),
+  contact: () => [
+    'github  →  github.com/S-leonardo369',
+    'site    →  math1o1.pages.dev',
+    'or scroll down — there\'s a form.',
+  ].join('\n'),
+  socials: () => 'github.com/S-leonardo369',
+  date: () => new Date().toString(),
+  clear: (_, ctx) => { ctx.clear(); return null; },
+  echo: (args) => args.join(' '),
+  sudo: () => ({ err: 'permission denied: nice try ;)' }),
+  skills: (args) => {
+    const flag = args[0] || '--list';
+    const map = {
+      '--languages': '→  Python  |  JavaScript  |  TypeScript  |  HTML/CSS',
+      '--backend':   '→  Node.js  |  Express  |  Railway  |  Telegram Bot API',
+      '--tools':     '→  Git  |  Electron  |  Quartz  |  Cloudflare Pages',
+      '--misc':      '→  Blockchain (custom)  |  LaTeX  |  Linux  |  Automation',
+    };
+    if (flag === '--list') {
+      return Object.values(map).join('\n');
+    }
+    if (map[flag]) return map[flag];
+    return { err: 'unknown flag: ' + flag + ' — try --list, --languages, --backend, --tools, --misc' };
+  },
+};
+
+function startTerminal() {
+  const body = document.getElementById('terminal-body');
+  const tagsEl = document.getElementById('skill-tags');
+  if (!body) return;
+
+  allSkills.forEach(s => {
+    const tag = document.createElement('span');
+    tag.className = 'skill-tag';
+    tag.textContent = s;
+    tagsEl.appendChild(tag);
+  });
+
+  const history = [];
+  let histPos = -1;
+
+  function appendLine(html) {
+    const row = document.createElement('div');
+    row.innerHTML = html;
+    body.appendChild(row);
+  }
+
+  function appendOutput(text, cls = 'term-output') {
+    if (text === null || text === undefined || text === '') return;
+    const row = document.createElement('div');
+    row.className = cls;
+    row.textContent = text;
+    body.appendChild(row);
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function clearTerminal() {
+    body.innerHTML = '';
+    mountInputLine();
+  }
+
+  function runCommand(raw) {
+    const trimmed = raw.trim();
+    appendLine('<div class="term-line"><span class="term-prompt">' + PROMPT + '</span><span class="term-cmd">' + escapeHtml(trimmed) + '</span></div>');
+    if (!trimmed) return;
+    history.push(trimmed);
+    histPos = history.length;
+
+    const parts = trimmed.split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const args = parts.slice(1);
+    const handler = COMMANDS[cmd];
+    if (!handler) {
+      appendOutput("command not found: " + cmd + " — type 'help'", 'term-output term-error');
+      return;
+    }
+    const result = handler(args, { clear: clearTerminal });
+    if (result && typeof result === 'object' && 'err' in result) {
+      appendOutput(result.err, 'term-output term-error');
+    } else if (result) {
+      appendOutput(result, 'term-output term-green');
+    }
+  }
+
+  function mountInputLine() {
+    const row = document.createElement('div');
+    row.className = 'term-input-line';
+    row.innerHTML = '<span class="term-prompt">' + PROMPT + '</span>';
+    const input = document.createElement('input');
+    input.className = 'term-input';
+    input.type = 'text';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('aria-label', 'Terminal input');
+    row.appendChild(input);
+    body.appendChild(row);
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const value = input.value;
+        input.disabled = true;
+        row.remove();
+        runCommand(value);
+        body.scrollTop = body.scrollHeight;
+        mountInputLine();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (histPos > 0) {
+          histPos--;
+          input.value = history[histPos];
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (histPos < history.length - 1) {
+          histPos++;
+          input.value = history[histPos];
+        } else {
+          histPos = history.length;
+          input.value = '';
+        }
+      }
+    });
+
+    input.focus();
+  }
+
+  body.addEventListener('click', () => {
+    const live = body.querySelector('.term-input');
+    if (live) live.focus();
+  });
+
+  // Boot greeting
+  appendOutput("welcome — type 'help' to see commands.", 'term-output term-green');
+  mountInputLine();
+}
+
+// ── CONTACT FORM ──
+function handleSubmit(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.textContent = '$ message_sent ✓';
+  btn.style.background = 'var(--green-dim)';
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.textContent = '$ send_message';
+    btn.style.background = '';
+    btn.disabled = false;
+    e.target.reset();
+  }, 3000);
+}
+
+// ── HERO GLITCH ON HOVER ──
+const heroName = document.getElementById('hero-name');
+if (heroName) {
+  heroName.addEventListener('mouseenter', () => {
+    heroName.classList.add('glitch-name-anim');
+  });
+  heroName.addEventListener('animationend', () => {
+    heroName.classList.remove('glitch-name-anim');
+  });
+}
+</script>
+
+</body>
+</html>
